@@ -1,36 +1,42 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from datetime import datetime
 import numpy as np
-from data_load import load_whatsapp_data, load_contacts, lookup_table
+from data_load import load_whatsapp_data, load_contacts
 import pytz
 
-# Initialize contacts mapping
+# Initialize contact information
 contacts_mapping = load_contacts()
-lookup = lookup_table()
 
-# Set page config with increased message size limit
-st.set_page_config(
-    page_title="WhatsApp Message Analytics",
-    page_icon="📱",
-    layout="wide"
-)
+def setup_page_config():
+    """Configure the Streamlit page settings."""
+    st.set_page_config(
+        page_title="WhatsApp Message Analytics",
+        page_icon="📱",
+        layout="wide"
+    )
 
-# Title and description
-st.title("📱 WhatsApp Message Analytics")
-st.markdown("""
-This dashboard provides insights into your WhatsApp messages, including message patterns,
-contact interactions, and chat statistics.
-""")
+def display_header():
+    """Display the dashboard header and description."""
+    st.title("📱 WhatsApp Message Analytics")
+    st.markdown("""
+    This dashboard provides insights into your WhatsApp messages, including message patterns,
+    contact interactions, and chat statistics.
+    """)
 
-# Load data from the database
 @st.cache_data
 def load_data(start_date=None, end_date=None):
-    # Load all data first
-    messages_df = load_whatsapp_data()
+    """
+    Load and filter WhatsApp message data.
     
-    # Convert timestamp to datetime
+    Args:
+        start_date: Optional start date for filtering messages
+        end_date: Optional end date for filtering messages
+        
+    Returns:
+        DataFrame containing filtered WhatsApp messages
+    """
+    messages_df = load_whatsapp_data()
     messages_df['datetime'] = pd.to_datetime(messages_df['timestamp'], unit='ms')
     
     # Filter by date range if provided
@@ -40,17 +46,25 @@ def load_data(start_date=None, end_date=None):
     
     return messages_df
 
-# Get min and max dates for the date picker
 @st.cache_data
 def get_date_range():
+    """
+    Get the minimum and maximum dates from the WhatsApp data.
+    
+    Returns:
+        Tuple of (min_date, max_date) as datetime.date objects
+    """
     full_df = load_whatsapp_data()
     full_df['datetime'] = pd.to_datetime(full_df['timestamp'], unit='ms')
     return full_df['datetime'].min().date(), full_df['datetime'].max().date()
 
-# Get the full date range
+# Setup the page
+setup_page_config()
+display_header()
+
+# Get the full date range and setup date filter
 min_date, max_date = get_date_range()
 
-# Sidebar filters
 st.sidebar.header("Filters")
 date_range = st.sidebar.date_input(
     "Select Date Range",
@@ -59,7 +73,6 @@ date_range = st.sidebar.date_input(
     max_value=max_date
 )
 
-# Load the filtered data
 messages_df = load_data(date_range[0], date_range[1])
 
 # Overview Statistics
@@ -79,19 +92,15 @@ with col4:
               round(len(messages_df) / (date_range[1] - date_range[0]).days, 1))
 
 
-
-# Section Headers
 st.header("📈 Message Activity Over Time")
 messages_df['date'] = messages_df['datetime'].dt.date
 
-# Group by date and count messages
+# Prepare daily message counts and moving average
 daily = messages_df.groupby('date').size().reset_index(name='count')
-daily['date'] = pd.to_datetime(daily['date'])  # Ensure proper datetime format for plotting
-
-# Calculate the 7-day moving average (rolling window)
+daily['date'] = pd.to_datetime(daily['date'])
 daily['ma7'] = daily['count'].rolling(window=7).mean()
 
-# Create an Altair chart: blue line for daily counts
+# Create chart with daily counts and moving average
 line = alt.Chart(daily).mark_line().encode(
     x=alt.X('date:T', title='Date'),
     y=alt.Y('count:Q', title='Number of Messages'),
@@ -102,28 +111,23 @@ line = alt.Chart(daily).mark_line().encode(
     title="Daily Message Count with 7-Day Moving Average"
 )
 
-# Red line for the 7-day moving average
 ma_line = alt.Chart(daily).mark_line(color='red').encode(
     x='date:T',
     y='ma7:Q',
     tooltip=['date:T', 'ma7:Q']
 )
 
-# Combine the charts
 chart = line + ma_line
-
-# Display in Streamlit
 st.altair_chart(chart, use_container_width=True)
 
 
-
 st.header("👥 Most Active One-on-One Chats")
-filtered_df = messages_df[messages_df['group'].isnull()]
-chat_count = filtered_df.groupby('chat_row_id').size().reset_index(name='count')
-chat_count = chat_count.merge(lookup[['chat_id', 'display_name']],
-                      left_on='chat_row_id', right_on='chat_id', how='left')
+filtered_df = messages_df[(messages_df['group'].isnull()) | (messages_df['group'] == '')]
+chat_count = filtered_df.groupby('chat_row_id').agg(
+    count=('_id', 'size'),
+    display_name=('display_name', 'first')
+).reset_index()
 
-# Get top 10 chat_row_ids by count
 top10 = chat_count.sort_values('count', ascending=False).head(10)
 
 # Create a horizontal bar chart using display_name as the y-axis
@@ -134,7 +138,6 @@ chart = alt.Chart(top10).mark_bar().encode(
     title='Top 10 by Count'
 )
 
-# Display the chart in Streamlit
 st.altair_chart(chart, use_container_width=True)
 
 st.header("👥 Most Active Group Chats")
@@ -142,7 +145,6 @@ st.header("👥 Most Active Group Chats")
 group_df = messages_df[messages_df['group'].notnull()]
 group_count = group_df.groupby(['chat_row_id', 'group']).size().reset_index(name='count')
 
-# Get top 10 groups by message count
 top10_groups = group_count.sort_values('count', ascending=False).head(10)
 
 # Create a horizontal bar chart using group name as the y-axis
@@ -153,27 +155,26 @@ group_chart = alt.Chart(top10_groups).mark_bar().encode(
     title='Top 10 Most Active Groups'
 )
 
-# Display the chart in Streamlit
 st.altair_chart(group_chart, use_container_width=True)
 
 st.header("⏰ Message Distribution by Hour")
 
-# Curated list of major timezones
+# List of supported timezones
 major_timezones = [
     'UTC',
-    'Europe/London',  # UK
-    'Europe/Paris',   # Most of EU
-    'Europe/Rome',    # Italy
-    'US/Eastern',     # New York
-    'US/Central',     # Chicago
-    'US/Pacific',     # Los Angeles
-    'Asia/Dubai',     # UAE
-    'Asia/Singapore', # Singapore
-    'Asia/Tokyo',     # Japan
-    'Australia/Sydney' # Australia
+    'Europe/London',
+    'Europe/Paris',
+    'Europe/Rome',
+    'US/Eastern',
+    'US/Central',
+    'US/Pacific',
+    'Asia/Dubai',
+    'Asia/Singapore',
+    'Asia/Tokyo',
+    'Australia/Sydney'
 ]
 
-default_tz = 'Europe/Rome'  # Default to Italy timezone
+default_tz = 'Europe/Rome'
 selected_tz = st.selectbox(
     "Select your timezone",
     major_timezones,
@@ -188,6 +189,7 @@ messages_df['local_datetime'] = messages_df['datetime'].dt.tz_localize('UTC').dt
 # Extract hour from local datetime and count messages by hour and sender type
 messages_df['hour'] = messages_df['local_datetime'].dt.hour
 hourly_dist = messages_df.groupby(['hour', 'from_me']).size().reset_index(name='count')
+hourly_dist['sender'] = hourly_dist['from_me'].map({1: 'Sent by me', 0: 'Received'})
 
 # Create a more descriptive sender column
 hourly_dist['sender'] = hourly_dist['from_me'].map({1: 'Sent by me', 0: 'Received'})
