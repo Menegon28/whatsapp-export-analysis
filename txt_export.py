@@ -37,7 +37,6 @@ def export_all_chats():
 
         # Get a representative message to get contact info
         first_msg = chat_msgs.iloc[0]
-        contact_phone = normalize_phone(first_msg['user']) if not is_group else None
 
         # Determine the file name
         if not is_group:

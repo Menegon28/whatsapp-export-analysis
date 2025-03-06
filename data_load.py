@@ -5,12 +5,10 @@ from datetime import datetime
 import os
 
 def normalize_phone(phone):
-    """Remove '+' and extra whitespace from a phone number."""
+    """Remove '+' and extra whitespace from a phone number. Only keep last 10 digits to avoid prefix errors."""
     phone = str(phone)
     num = phone.replace('+', '').replace("-", "").strip()
-    if len(num) == 10:
-        num = "39" + num
-    return num
+    return num[-10:]
 
 def parse_contacts(vcf_file):
     """Parse a .vcf file and return a dict mapping normalized phone numbers to display names."""
@@ -41,9 +39,6 @@ def load_contacts():
     contacts_mapping = {}
     if os.path.exists("contacts.vcf"):
         contacts_mapping = parse_contacts("contacts.vcf")
-    #       print("Loaded contacts from contacts.vcf")
-    #   else:
-    #       print("No contacts.vcf file found. Will use phone numbers as display names.")
     return contacts_mapping
 
 
@@ -51,7 +46,6 @@ def lookup_table():
     # Build the contacts mapping from contacts.vcf
     contacts_mapping = parse_contacts("contacts.vcf")
 
-    # Connect to the msgstore.db
     conn = sqlite3.connect('msgstore.db')
 
     # Load the chat and jid tables
