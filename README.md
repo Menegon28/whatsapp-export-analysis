@@ -52,3 +52,12 @@ Tables used:
 - `message`: Message content and metadata
 - `chat`: Chat/conversation metadata
 - `jid`: User identifiers and phone numbers
+
+## Contacts and updates
+If you want to reach out, you can contact me at v6zto6kk@anonaddy.me. Any help on this project is appreciated, in particular if you
+find your database to not be working or if you want to contribute to the code.
+
+This currently works for my msgstore.db, which is obtained from .crypt15. WhatsApp often updates how their database works so this tool
+might break soon or even not be working for you at the moment. This is just a reverse engeneering attempt.
+
+This is in no way affiliated with WhatsApp.
